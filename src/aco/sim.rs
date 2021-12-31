@@ -1,8 +1,10 @@
 use super::{
     ant::Ant,
-    opt::{TwoOptStrategy, NoOpStrategy},
-    problem::{Matrix, Problem},
+    opt::TwoOptStrategy,
+    problem::{Problem},
 };
+
+use yoos::collections::Matrix;
 
 const MAX_CYCLES: usize = 150;
 const BEST_TOUR_COST: f64 = f64::MAX;
@@ -69,7 +71,7 @@ impl Simulator {
             self.reset_ants();
             self.update_ants();
             if self.try_find_best_tour() == Continue::No {
-                break
+                break;
             }
             self.evaporate();
             self.update_pheromones()

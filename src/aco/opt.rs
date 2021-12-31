@@ -1,4 +1,4 @@
-use super::problem::Matrix;
+use yoos::collections::Matrix;
 
 pub trait OptimizationStrategy {
     fn convert_to_multiple_paths(path: &[usize]) -> Vec<Vec<usize>> {

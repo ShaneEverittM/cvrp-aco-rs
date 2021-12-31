@@ -1,6 +1,8 @@
 use rand::random;
 
-use super::{opt::OptimizationStrategy, problem::Matrix};
+use super::opt::OptimizationStrategy;
+
+use yoos::collections::Matrix;
 
 #[derive(Clone)]
 pub struct Ant {
