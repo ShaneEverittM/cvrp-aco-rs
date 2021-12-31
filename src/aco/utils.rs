@@ -1,39 +1,23 @@
-use std::str::FromStr;
+// May be used in the future, currently unusable because does not duplicate zeroes around path
+#[allow(dead_code)]
+pub fn path_to_slices(path: &mut [usize]) -> Vec<&mut [usize]> {
+    use yoos::iter::FindAll;
 
-use anyhow::{anyhow, bail, Result};
+    let zero_finder: Vec<usize> = path.iter().find_all(&0).collect();
 
-pub trait ParseKeyValueAt {
-    fn parse_key_value_at<K, V>(&self, line_num: usize) -> Result<(K, V)>
-    where
-        K: FromStr,
-        <K as std::str::FromStr>::Err: std::error::Error + Send + Sync + 'static,
-        V: FromStr,
-        <V as std::str::FromStr>::Err: std::error::Error + Send + Sync + 'static;
-}
+    let mut paths = Vec::with_capacity(zero_finder.len());
 
-impl ParseKeyValueAt for Vec<String> {
-    fn parse_key_value_at<K, V>(&self, line_num: usize) -> Result<(K, V)>
-    where
-        K: FromStr,
-        <K as FromStr>::Err: std::error::Error + Send + Sync + 'static,
-        V: FromStr,
-        <V as FromStr>::Err: std::error::Error + Send + Sync + 'static,
-    {
-        let l = self
-            .get(line_num)
-            .ok_or_else(|| anyhow!("Line number does not exist"))?;
-
-        let split: Vec<_> = l.split(':').collect();
-
-        if split.len() != 2 {
-            bail!("Line does not contain K: V")
+    for (&idx1, &idx2) in zero_finder.iter().zip(zero_finder.iter().skip(1)) {
+        unsafe {
+            // SAFETY: The ranges are non-overlapping
+            let start = path.as_mut_ptr().add(idx1 + 1);
+            let len = (idx2 - idx1) - 1;
+            let slice = std::slice::from_raw_parts_mut(start, len);
+            paths.push(slice)
         }
-
-        let k = split[0].parse::<K>()?;
-        let v = split[1][1..].parse::<V>()?;
-
-        Ok((k, v))
     }
+
+    paths
 }
 
 pub fn path_to_routes(path: &[usize]) -> Vec<Vec<usize>> {
