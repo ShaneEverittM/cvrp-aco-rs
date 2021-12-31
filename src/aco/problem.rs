@@ -1,30 +1,27 @@
 use std::{
     fs::File,
     io::Read,
-    str::FromStr,
     num::ParseFloatError,
+    str::FromStr,
 };
 
 use anyhow::{anyhow, Result};
 use strum::EnumString;
 use yoos::collections::Matrix;
 
+pub type NomResult<I, O> = nom::IResult<I, O, nom::error::VerboseError<I>>;
 
-#[allow(dead_code)]
-#[derive(Debug)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct Problem {
-    name: String,
-    comment: String,
-    problem_type: ProblemType,
-    edge_weight_type: EdgeWeightType,
-    dimension: usize,
+    pub name: String,
+    pub comment: String,
+    pub problem_type: ProblemType,
+    pub dimension: usize,
+    pub edge_weight_type: EdgeWeightType,
+    pub capacity: usize,
     pub adjacency_matrix: Matrix,
     pub demands: Vec<usize>,
-    pub capacity: usize,
-
 }
-
-pub type NomResult<I, O> = nom::IResult<I, O, nom::error::VerboseError<I>>;
 
 impl Problem {
     fn parse(i: &str) -> NomResult<&str, Self> {
@@ -33,9 +30,9 @@ impl Problem {
             error::ParseError,
             IResult,
             combinator::{map_res, map_parser},
-            bytes::complete::{tag, take_until1, take_while1},
+            bytes::complete::{tag, take_until1},
             sequence::{terminated, delimited, preceded, tuple, separated_pair},
-            character::complete::{digit1, space0, space1, line_ending},
+            character::complete::{digit1, space0, space1, line_ending, not_line_ending},
             multi::count,
         };
 
@@ -43,7 +40,7 @@ impl Problem {
         /*        Helper parsers      */
         /******************************/
 
-        // Applies the inner parser, then consumes any number of spaces then a line ending
+        /// Applies the inner parser, then consumes any number of spaces then a line ending.
         fn trailing_ws<'a, F, O, E>(inner: F) -> impl FnMut(&'a str) -> IResult<&'a str, O, E>
             where
                 F: FnMut(&'a str) -> IResult<&'a str, O, E> + 'a,
@@ -52,30 +49,18 @@ impl Problem {
             terminated(inner, preceded(space0, line_ending))
         }
 
-        // Single word value after "<key>:"
-        fn word_after<'a, E>(key: &'a str) -> impl FnMut(&'a str) -> IResult<&'a str, &'a str, E>
+        /// Parses the key, a colon, the uses the provided parser to parse the value, then parses
+        /// any number of spaces then a line ending.
+        fn key_then<'a, F, O, E>(
+            key: &'a str,
+            value_parser: F,
+        ) -> impl FnMut(&'a str) -> IResult<&'a str, O, E>
             where
-                E: ParseError<&'a str> + 'a
+                F: FnMut(&'a str) -> IResult<&'a str, O, E> + 'a,
+                E: ParseError<&'a str> + 'a,
+                O: 'a
         {
-            preceded(
-                terminated(tag(key), tag(" : ")),
-                trailing_ws(take_while1(
-                    |c: char| {
-                        c.is_ascii_alphanumeric() || c.is_ascii_punctuation()
-                    }
-                )),
-            )
-        }
-
-        // Paren-delimited sentence after "<key>:"
-        fn comment_after<'a, E>(key: &'a str) -> impl FnMut(&'a str) -> IResult<&'a str, &'a str, E>
-            where
-                E: ParseError<&'a str> + 'a
-        {
-            preceded(
-                terminated(tag(key), tag(" : ")),
-                trailing_ws(delimited(tag("("), take_until1(")"), tag(")"))),
-            )
+            trailing_ws(preceded(tuple((tag(key), tag(" : "))), value_parser))
         }
 
         /******************************/
@@ -83,32 +68,35 @@ impl Problem {
         /******************************/
 
         // Problem name
-        let (i, name) = word_after("NAME")(i)?;
+        let (i, name) = key_then("NAME", not_line_ending)(i)?;
 
         // Comment about problem
-        let (i, comment) = comment_after("COMMENT")(i)?;
+        let (i, comment) = key_then(
+            "COMMENT",
+            delimited(tag("("), take_until1(")"), tag(")")),
+        )(i)?;
 
         // Type, mapped to ProblemType
         let (i, problem_type) = map_parser(
-            word_after("TYPE"),
+            key_then("TYPE", not_line_ending),
             ProblemType::parse,
         )(i)?;
 
         // Dimension, mapped to usize
         let (i, dimension) = map_res(
-            word_after("DIMENSION"),
+            key_then("DIMENSION", not_line_ending),
             usize::from_str,
         )(i)?;
 
         // Edge weight type, mapped to EdgeWeightType
         let (i, edge_weight_type) = map_parser(
-            word_after("EDGE_WEIGHT_TYPE"),
+            key_then("EDGE_WEIGHT_TYPE", not_line_ending),
             EdgeWeightType::parse,
         )(i)?;
 
         // Capacity, mapped to usize
         let (i, capacity) = map_res(
-            word_after("CAPACITY"),
+            key_then("CAPACITY", not_line_ending),
             usize::from_str,
         )(i)?;
 
@@ -189,8 +177,9 @@ impl Problem {
 }
 
 #[non_exhaustive]
-#[derive(Debug, PartialEq, EnumString)]
-enum ProblemType {
+#[derive(EnumString)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
+pub enum ProblemType {
     #[strum(ascii_case_insensitive)]
     Cvrp,
 }
@@ -206,8 +195,9 @@ impl ProblemType {
 }
 
 #[non_exhaustive]
-#[derive(Debug, PartialEq, EnumString)]
-enum EdgeWeightType {
+#[derive(EnumString)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
+pub enum EdgeWeightType {
     #[strum(serialize = "EUC_2D")]
     Euc2d,
 }
@@ -226,21 +216,14 @@ impl EdgeWeightType {
 #[cfg(test)]
 mod tests {
     use std::fs::File;
-    use crate::aco::problem::{EdgeWeightType, ProblemType};
 
-    use crate::Problem;
+    use anyhow::Result;
+
+    use super::*;
 
     #[test]
-    fn test() {
-        let input = File::open("./inputs/A-n32-k5.vrp").unwrap();
-        let problem = Problem::try_from_vrp(input);
-
-        if problem.is_err() {
-            eprintln!("{}", problem.as_ref().unwrap_err());
-        }
-
-        assert!(problem.is_ok());
-        let problem = problem.unwrap();
+    fn test_from_vrp() -> Result<()> {
+        let problem = Problem::try_from_vrp(File::open("./inputs/A-n32-k5.vrp")?)?;
 
         assert_eq!(problem.name, "A-n32-k5");
         assert_eq!(problem.comment, "Augerat et al, No of trucks: 5, Optimal value: 784");
@@ -248,9 +231,8 @@ mod tests {
         assert_eq!(problem.dimension, 32);
         assert_eq!(problem.edge_weight_type, EdgeWeightType::Euc2d);
         assert_eq!(problem.capacity, 100);
-
-        dbg!(problem.adjacency_matrix);
-
         assert_eq!(problem.demands[1], 19);
+
+        Ok(())
     }
 }

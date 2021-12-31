@@ -4,10 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = { version = "3.0.0-beta.5", features = ["derive"] }
-anyhow = "1.0"
-regex = "1.5"
-rand = "0.8"
-nom = { version = "7.1.0", features = ["alloc"]}
-yoos = { path = "../yoos" }
+clap = { version = "3.0.0-rc.11", features = ["derive"] }
+anyhow = "1.0.52"
+regex = "1.5.4"
+rand = "0.8.4"
+nom = "7.1.0"
 strum = { version = "0.23.0", features = ["derive"] }
+yoos = { path = "../yoos" }
+
+[dev-dependencies]
+yoos = { path = "../yoos", features = ["collections-extra-traits"] }
